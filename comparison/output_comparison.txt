@@ -1,0 +1,98 @@
+============================================================
+LOVE R vs Python Comparison
+============================================================
+
+------------------------------------------------------------
+Test 1: LOVE (pure_homo=False, using R-generated data)
+------------------------------------------------------------
+  Python K: 2
+  Python pureVec: [np.int64(0), np.int64(1), np.int64(2), np.int64(3)]
+  Python optDelta: 0.146131
+  R K: 2
+  R pureVec: [np.int64(1), np.int64(2), np.int64(3), np.int64(4), np.int64(5)]
+  R optDelta: 0.263514
+
+Comparisons:
+  K: PASS
+  pureVec: FAIL
+    Common: [np.int64(0), np.int64(1), np.int64(2), np.int64(3)]
+    Only in R: []
+    Only in Python: [np.int64(4)]
+  A shape: PASS ((6, 2))
+
+------------------------------------------------------------
+Test 2: LOVE (pure_homo=True, using R-generated data)
+------------------------------------------------------------
+  Python K: 2
+  Python pureVec: [np.int64(0), np.int64(1), np.int64(2), np.int64(3)]
+  Python optDelta: 0.021460
+  R K: 2
+  R pureVec: [np.int64(1), np.int64(2), np.int64(3), np.int64(4)]
+  R optDelta: 0.021460
+
+Comparisons:
+  K: PASS
+  pureVec: PASS (exact match)
+
+------------------------------------------------------------
+Test 3: Screen_X (using R-generated data)
+------------------------------------------------------------
+  Python noise_ind: []
+  Python thresh_min: 0.077113
+  R noise_ind: [np.int64(6)]
+  R thresh_min: 0.090544
+
+Comparisons:
+  noise_ind: FAIL
+    Common: []
+    Only in R: []
+    Only in Python: [np.int64(6)]
+
+------------------------------------------------------------
+Test 4: Score_mat (using R-generated data)
+------------------------------------------------------------
+  Python score shape: (5, 5)
+  Python moments shape: (5, 5)
+
+Comparisons:
+  score: PASS (max diff: 2.18e-15)
+  moments: PASS (max diff: 4.66e-15)
+
+------------------------------------------------------------
+Test 5: EstC (using R-generated data)
+------------------------------------------------------------
+  Python C (non-diagonal):
+[[1.89718615 0.11563092]
+ [0.11563092 1.37241907]]
+  Python C (diagonal):
+[[1.89718615 0.        ]
+ [0.         1.37241907]]
+
+Comparisons:
+  C (non-diagonal): PASS (max diff: 5.83e-16)
+  C (diagonal): PASS (max diff: 4.44e-16)
+
+------------------------------------------------------------
+Test 6: estOmega
+------------------------------------------------------------
+  Python Omega shape: (2, 2)
+  Python Omega:
+[[ 0.68757113 -0.09937551]
+ [-0.08661338  0.74687207]]
+
+Comparisons:
+  Omega: PASS (max diff: 3.53e-13)
+
+============================================================
+SUMMARY
+============================================================
+  test1: FAIL
+  test2: PASS
+  test3: FAIL
+  test4: PASS
+  test5: PASS
+  test6: PASS
+------------------------------------------------------------
+Total: 6, Passed: 4, Failed: 2, Skipped: 0
+
+2 test(s) FAILED - please investigate.
