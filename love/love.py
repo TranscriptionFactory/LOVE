@@ -204,7 +204,8 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
         B_hat = np.sqrt(D_Sigma)[:, np.newaxis] * B_hat
         D_B = np.max(np.abs(B_hat), axis=0)
         A_hat = B_hat / D_B
-        C_hat = np.outer(D_B, D_B) * R_Z
+        # R: D_B * R_Z uses column-wise recycled multiplication, not outer product
+        C_hat = D_B[:, np.newaxis] * R_Z
 
         if diagonal:
             C_hat = np.diag(np.diag(C_hat))
@@ -270,7 +271,8 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
                 Omega = estOmega(optLbd, C_hat)
 
             Y = EstY(Sigma, A_hat, I_hat)
-            threshold = mu * optDelta * np.max(np.sum(np.abs(Omega), axis=0))
+            # R's norm(Omega, "I") is infinity norm = max absolute row sum
+            threshold = mu * optDelta * np.max(np.sum(np.abs(Omega), axis=1))
 
             if est_non_pure_row == "HT":
                 AJ = threshA((Omega @ Y).T, threshold)
