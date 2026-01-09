@@ -178,6 +178,8 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
         pure_res = CV_res['est_pure']
         est_I = pure_res['I_part']
         est_I_set = pure_res['I']
+        # Store original partition for FindSignPureNode (R uses pure_res$I_part, not updated est_I)
+        original_I_part = pure_res['I_part']
 
         optDelta = CV_res['delta_min']
 
@@ -211,7 +213,8 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
             C_hat = np.diag(np.diag(C_hat))
 
         I_hat = est_I_set
-        I_hat_part = FindSignPureNode(est_I, Sigma)
+        # Use original partition from CV, matching R's: FindSignPureNode(pure_res$I_part, Sigma)
+        I_hat_part = FindSignPureNode(original_I_part, Sigma)
 
         Gamma_hat = BI_C_res['Gamma'] * D_Sigma
 

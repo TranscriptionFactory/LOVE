@@ -105,37 +105,24 @@ def LP(y: np.ndarray, lbd: float) -> np.ndarray:
     """
     K = len(y)
 
-    # Variables: [beta_1_pos, beta_1_neg, beta_2_pos, beta_2_neg, ...]
+    # Variables layout matches R: [beta_1_pos, beta_2_pos, ..., beta_K_pos,
+    #                              beta_1_neg, beta_2_neg, ..., beta_K_neg]
     # Total: 2*K variables
 
     # Objective: minimize sum of all variables
     c = np.ones(2 * K)
 
-    # Constraints:
-    # beta_pos - beta_neg <= lbd + y  for each k
-    # -beta_pos + beta_neg <= lbd - y  for each k
-    # beta_pos >= 0, beta_neg >= 0 (handled by bounds)
-
-    A_ub_list = []
-    b_ub_list = []
-
+    # Build constraint matrix C where C[k, k] = 1, C[k, k+K] = -1
+    # So C @ x = beta_pos - beta_neg
+    # Constraints: C @ x <= lbd + y, -C @ x <= lbd - y
+    C = np.zeros((K, 2 * K))
     for k in range(K):
-        # beta_k_pos - beta_k_neg <= lbd + y[k]
-        row_pos = np.zeros(2 * K)
-        row_pos[2 * k] = 1      # beta_k_pos
-        row_pos[2 * k + 1] = -1  # -beta_k_neg
-        A_ub_list.append(row_pos)
-        b_ub_list.append(lbd + y[k])
+        C[k, k] = 1        # beta_k_pos
+        C[k, k + K] = -1   # beta_k_neg
 
-        # -beta_k_pos + beta_k_neg <= lbd - y[k]
-        row_neg = np.zeros(2 * K)
-        row_neg[2 * k] = -1     # -beta_k_pos
-        row_neg[2 * k + 1] = 1   # beta_k_neg
-        A_ub_list.append(row_neg)
-        b_ub_list.append(lbd - y[k])
-
-    A_ub = np.array(A_ub_list)
-    b_ub = np.array(b_ub_list)
+    # Stack constraints: [C; -C] @ x <= [lbd + y; lbd - y]
+    A_ub = np.vstack([C, -C])
+    b_ub = np.concatenate([lbd + y, lbd - y])
 
     # Bounds: all variables >= 0
     bounds = [(0, None)] * (2 * K)
@@ -144,10 +131,8 @@ def LP(y: np.ndarray, lbd: float) -> np.ndarray:
 
     if result.success:
         solution = result.x
-        # beta = beta_pos - beta_neg
-        beta = np.zeros(K)
-        for k in range(K):
-            beta[k] = solution[2 * k] - solution[2 * k + 1]
+        # beta = beta_pos - beta_neg (R: LPsol[1:K] - LPsol[(K+1):(2*K)])
+        beta = solution[:K] - solution[K:]
         return beta
     else:
         # Return soft-thresholded y as fallback
@@ -214,39 +199,24 @@ def Dantzig(C_hat: np.ndarray, y: np.ndarray, lbd: float) -> np.ndarray:
     """
     K = len(y)
 
-    # Variables: [beta_1_pos, beta_1_neg, beta_2_pos, beta_2_neg, ...]
+    # Variables layout matches R: [beta_1_pos, beta_2_pos, ..., beta_K_pos,
+    #                              beta_1_neg, beta_2_neg, ..., beta_K_neg]
     # Total: 2*K variables
 
     # Objective: minimize sum of all variables
     c = np.ones(2 * K)
 
-    # Build constraint matrix
-    # C_hat @ (beta_pos - beta_neg) <= lbd + y
-    # -C_hat @ (beta_pos - beta_neg) <= lbd - y
-
-    A_ub_list = []
-    b_ub_list = []
-
-    # Build the coefficient matrix for C_hat @ beta
-    # new_C_hat[k, :] = [C_hat[k, 0], -C_hat[k, 0], C_hat[k, 1], -C_hat[k, 1], ...]
+    # Build constraint matrix matching R:
+    # new_C_hat[k, :] = [C_hat[k, :], -C_hat[k, :]]
+    # So new_C_hat @ x = C_hat @ beta_pos - C_hat @ beta_neg = C_hat @ beta
     new_C_hat = np.zeros((K, 2 * K))
     for k in range(K):
-        for j in range(K):
-            new_C_hat[k, 2 * j] = C_hat[k, j]      # beta_j_pos coefficient
-            new_C_hat[k, 2 * j + 1] = -C_hat[k, j]  # beta_j_neg coefficient
+        new_C_hat[k, :K] = C_hat[k, :]      # beta_pos coefficients
+        new_C_hat[k, K:] = -C_hat[k, :]     # beta_neg coefficients
 
-    # C_hat @ beta <= lbd + y
-    for k in range(K):
-        A_ub_list.append(new_C_hat[k, :])
-        b_ub_list.append(lbd + y[k])
-
-    # -C_hat @ beta <= lbd - y
-    for k in range(K):
-        A_ub_list.append(-new_C_hat[k, :])
-        b_ub_list.append(lbd - y[k])
-
-    A_ub = np.array(A_ub_list)
-    b_ub = np.array(b_ub_list)
+    # Stack constraints: [new_C_hat; -new_C_hat] @ x <= [lbd + y; lbd - y]
+    A_ub = np.vstack([new_C_hat, -new_C_hat])
+    b_ub = np.concatenate([lbd + y, lbd - y])
 
     # Bounds: all variables >= 0
     bounds = [(0, None)] * (2 * K)
@@ -255,10 +225,8 @@ def Dantzig(C_hat: np.ndarray, y: np.ndarray, lbd: float) -> np.ndarray:
 
     if result.success:
         solution = result.x
-        # beta = beta_pos - beta_neg
-        beta = np.zeros(K)
-        for k in range(K):
-            beta[k] = solution[2 * k] - solution[2 * k + 1]
+        # beta = beta_pos - beta_neg (R: LPsol[1:K] - LPsol[(K+1):(2*K)])
+        beta = solution[:K] - solution[K:]
         return beta
     else:
         # Return zeros as fallback
