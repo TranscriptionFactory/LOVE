@@ -8,6 +8,7 @@ Main entry point for the LOVE algorithm.
 import numpy as np
 from typing import Dict, Optional, Union, List
 import warnings
+from scipy import stats
 
 from .utilities import recoverGroup, threshA
 from .cv import CV_delta, KfoldCV_delta, CV_lbd
@@ -17,13 +18,61 @@ from .est_nonpure import EstY, EstAJInv, EstAJDant
 from .est_omega import estOmega
 
 
+def _apply_fdr_threshold(corr_matrix: np.ndarray, n: int, thresh_fdr: float) -> np.ndarray:
+    """
+    Apply FDR thresholding to correlation matrix using Benjamini-Hochberg correction.
+    
+    For each correlation r, compute t-statistic: t = r * sqrt(n-2) / sqrt(1 - r^2)
+    Then compute two-tailed p-value, apply BH correction, and zero out 
+    correlations with adjusted p-value > thresh_fdr.
+    
+    Parameters
+    ----------
+    corr_matrix : np.ndarray
+        Correlation matrix (p x p)
+    n : int
+        Number of samples
+    thresh_fdr : float
+        FDR threshold (0-1)
+        
+    Returns
+    -------
+    np.ndarray
+        FDR-thresholded correlation matrix
+    """
+    p = corr_matrix.shape[0]
+    
+    # Convert correlations to t-statistics
+    # Clip to avoid division by zero or sqrt of negative
+    r_clipped = np.clip(corr_matrix, -0.9999, 0.9999)
+    t_stats = r_clipped * np.sqrt(n - 2) / np.sqrt(1 - r_clipped**2)
+    
+    # Compute two-tailed p-values
+    p_values = 2 * (1 - stats.t.cdf(np.abs(t_stats), df=n - 2))
+    
+    # Apply Benjamini-Hochberg FDR correction
+    # Flatten p-values, adjust, then reshape
+    p_flat = p_values.flatten()
+    from statsmodels.stats.multitest import multipletests
+    _, p_adjusted, _, _ = multipletests(p_flat, alpha=thresh_fdr, method='fdr_bh')
+    p_adjusted = p_adjusted.reshape(p, p)
+    
+    # Create mask: keep entries with adjusted p-value <= thresh_fdr
+    keep_mask = p_adjusted <= thresh_fdr
+    
+    # Apply mask to correlation matrix
+    thresholded = corr_matrix * keep_mask
+    
+    return thresholded
+
+
 def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
          est_non_pure_row: str = "HT", verbose: bool = False,
          pure_homo: bool = False, diagonal: bool = False,
          delta: Optional[np.ndarray] = None, merge: bool = False,
          rep_CV: int = 50, ndelta: int = 50, q: int = 2,
          exact: bool = False, max_pure: Optional[float] = None,
-         nfolds: int = 10) -> Dict:
+         nfolds: int = 10, thresh_fdr: Optional[float] = None) -> Dict:
     """
     LOVE: Latent-model based OVErlapping clustering.
 
@@ -66,6 +115,11 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
         Max proportion of pure variables. Default is None.
     nfolds : int, optional
         Number of folds for cross validation. Default is 10.
+    thresh_fdr : float, optional
+        FDR threshold for correlation matrix filtering (0-1).
+        If provided, applies Benjamini-Hochberg FDR correction to
+        correlation matrix before pure variable detection.  
+        Default is None (no thresholding).
 
     Returns
     -------
@@ -104,11 +158,14 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
     """
     n, p = X.shape
 
-    # Centering
+    # Center data only (match R's scale(X, TRUE, FALSE) in LOVE.R line 100)
+    # NOTE: X should already be standardized (centered AND scaled) before calling LOVE
+    # This centering is a no-op on properly standardized data, but matches R behavior
     X = X - np.mean(X, axis=0)
 
     if pure_homo:
         # Estimate the pure rows using homogeneous approach
+        # After standardization, se_est should be ~1
         se_est = np.std(X, axis=0, ddof=1)  # Sample standard errors
 
         if delta is not None:
@@ -133,6 +190,17 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
             print("Finish selecting delta and start estimating the pure loadings...")
 
         Sigma = np.cov(X, rowvar=False)
+        
+        # Apply FDR thresholding to correlation matrix if requested
+        if thresh_fdr is not None:
+            if verbose:
+                print(f"Applying FDR thresholding (thresh={thresh_fdr}) to correlation matrix...")
+            R = np.corrcoef(X, rowvar=False)
+            R_thresh = _apply_fdr_threshold(R, n, thresh_fdr)
+            # Convert thresholded correlation back to covariance
+            std_devs = np.sqrt(np.diag(Sigma))
+            Sigma = R_thresh * np.outer(std_devs, std_devs)
+        
         resultAI = EstAI(Sigma, optDelta, se_est, merge)
 
         # Check if there is any group with ONLY ONE pure variable
@@ -169,6 +237,15 @@ def LOVE(X: np.ndarray, lbd: float = 0.5, mu: float = 0.5,
         # Estimate the pure rows via heterogeneous approach
         R_hat = np.corrcoef(X, rowvar=False)
         Sigma = np.cov(X, rowvar=False)
+        
+        # Apply FDR thresholding to correlation matrix if requested
+        if thresh_fdr is not None:
+            if verbose:
+                print(f"Applying FDR thresholding (thresh={thresh_fdr}) to correlation matrix...")
+            R_hat = _apply_fdr_threshold(R_hat, n, thresh_fdr)
+            # Convert thresholded correlation back to covariance
+            std_devs = np.sqrt(np.diag(Sigma))
+            Sigma = R_hat * np.outer(std_devs, std_devs)
 
         if verbose:
             print(f"Select delta by using {nfolds} fold cross-validation...")
